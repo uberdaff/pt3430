@@ -19,27 +19,15 @@
 #  MA 02110-1301, USA.
 #  
 
-import time
-import serial
-import kd3005p
-
-psu_com = serial.Serial(
-	port='COM11',
-	baudrate=9600,
-	parity=serial.PARITY_NONE,
-	stopbits=serial.STOPBITS_ONE,
-	bytesize=serial.EIGHTBITS
-)
+import pt3430
 
 def main(args):
-	psu = kd3005p.kd3005pInstrument(psu_com)
-	print psu.getIdn()
-	psu.setVolt(13.37)
-	psu.setAmp(0.1)
-	print psu.readVolt()
-	print psu.readAmp()
-	print psu.status
-	psu.close()
+	dmm = pt3430.pt3430Instrument('COM9')
+	if dmm.isConnected == True:
+		print(dmm.getValue())
+		print(dmm.getValueString())
+		print(dmm.status)
+		dmm.close()
 	
 	return 0
 

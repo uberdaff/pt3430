@@ -20,10 +20,11 @@
 #  
 # Requirement: pyserial
 #
-# getValue() - Get the measured value as a float
+# getValue() - Get the measured value
 # getValueString() - Get the measured value as a string with the unit
 #
 
+import sys
 import time
 import serial
 
@@ -32,10 +33,24 @@ class pt3430Instrument:
 	dmm_com = None
 	status={}
 	
-	def __init__(self, dmm_com):
-		dmm_com.isOpen()
-		self.dmm_com = dmm_com
-		self.isConnected = True
+	def __init__(self, com_port):
+		try:
+			dmm_com = serial.Serial(
+				port=com_port,
+				baudrate=19200,
+				parity=serial.PARITY_ODD,
+				stopbits=serial.STOPBITS_ONE,
+				bytesize=serial.SEVENBITS
+			)
+			dmm_com.isOpen()
+			self.dmm_com = dmm_com
+			self.getValue()
+			self.isConnected = True
+		except:
+			print("COM port failure:")
+			print(sys.exc_info())
+			self.dmm_com = None
+			self.isConnected = False
 	
 	def close(self):
 		self.dmm_com.close()
@@ -43,16 +58,16 @@ class pt3430Instrument:
 	def pt3430translate(self, string):
 		self.status["RangeHex"]=hex(ord(string[0]))
 		self.status["FuncHex"]=hex(ord(string[6]))
-		functions = {0x30:{"Name":"Current A (auto)", "Desimal":[3],              "Units":["A"]},\
-		0x36:{"Name":"Capacitance",                   "Desimal":[3,2,4,3,2,4,3,2],"Units":["nF","nF","uF","uF","uF","mF","mF","mF"]},\
-		0x31:{"Name":"Diode",                         "Desimal":[4],              "Units":["V"]},\
-		0x39:{"Name":"Current A (manual)",            "Desimal":[3],              "Units":["A"]},\
-		0x32:{"Name":"Frequency / Duty",              "Desimal":[3,2,4,3,2,4,3,2],"Units":["Hz","Hz","kHz","kHz","kHz","MHz","MHz","MHz"]},\
-		0x3B:{"Name":"Voltage",                       "Desimal":[4,3,2,1,2],      "Units":["V","V","V","V","mV"]},\
-		0x33:{"Name":"Ohm",                           "Desimal":[2,4,3,2,4,3,2],  "Units":["Ohm","kOhm","kOhm","kOhm","MOhm","MOhm","MOhm"]},\
-		0x3D:{"Name":"Auto uA current",               "Desimal":[2,1],            "Units":["uA","uA"]},\
-		0x35:{"Name":"Continuity",                    "Desimal":[2],              "Units":["Ohm"]},\
-		0x3F:{"Name":"Auto mA current",               "Desimal":[3,2],            "Units":["mA","mA"]}}
+		functions = {0x30:{"Name":"Current A (auto)", "Desimal":[3],              "Units":["A"], "Mul":[1]},\
+		0x36:{"Name":"Capacitance",                   "Desimal":[3,2,4,3,2,4,3,2],"Units":["nF","nF","uF","uF","uF","mF","mF","mF"],"Mul":[0.000000001,0.000000001,0.000001,0.000001,0.000001,0.001,0.001,0.001]},\
+		0x31:{"Name":"Diode",                         "Desimal":[4],              "Units":["V"], "Mul":[1]},\
+		0x39:{"Name":"Current A (manual)",            "Desimal":[3],              "Units":["A"], "Mul":[1]},\
+		0x32:{"Name":"Frequency / Duty",              "Desimal":[3,2,4,3,2,4,3,2],"Units":["Hz","Hz","kHz","kHz","kHz","MHz","MHz","MHz"], "Mul":[1,1,1000,1000,1000,1000000,1000000,1000000]},\
+		0x3B:{"Name":"Voltage",                       "Desimal":[4,3,2,1,2],      "Units":["V","V","V","V","mV"], "Mul":[1,1,1,1,0.001]},\
+		0x33:{"Name":"Ohm",                           "Desimal":[2,4,3,2,4,3,2],  "Units":["Ohm","kOhm","kOhm","kOhm","MOhm","MOhm","MOhm"], "Mul":[1,1000,1000,1000,1000000,1000000,1000000]},\
+		0x3D:{"Name":"Auto uA current",               "Desimal":[2,1],            "Units":["uA","uA"], "Mul":[0.000001, 0.000001]},\
+		0x35:{"Name":"Continuity",                    "Desimal":[2],              "Units":["Ohm"], "Mul":[1]},\
+		0x3F:{"Name":"Auto mA current",               "Desimal":[3,2],            "Units":["mA","mA"], "Mul":[0.001, 0.001]}}
 		#divisor = {0x30:
 		
 		# self.status bits from byte 7
@@ -99,6 +114,12 @@ class pt3430Instrument:
 			except:
 				decimal = 0
 			
+			try:
+				mul = functions[ord(string[6])]["Mul"][rangeIndex]
+			except:
+				mul = 0
+			
+			
 			self.status["Decimal"]=decimal
 			self.status["Unit"]=unit
 		
@@ -113,15 +134,19 @@ class pt3430Instrument:
 			self.status["Digits"]=float(string[1:6])/pow(10,decimal)
 			if self.status["Sign"] == "-":
 				self.status["Digits"]*=-1
+			
 			self.status["Measurement"]=str(self.status["Digits"])+self.status["Unit"]
 			
 			if self.status["OL"] == "True":
 				self.status["Measurement"]="OL"
+				self.status["Digits"]=0
+			
+			self.status["Value"]=self.status["Digits"]*mul
 		
 	def getValue(self):
-		self.pt3430translate(self.dmm_com.readline())
-		return self.status["Digits"]
+		self.pt3430translate(self.dmm_com.readline().decode())
+		return str(self.status["Value"])
 	
 	def getValueString(self):
-		self.pt3430translate(self.dmm_com.readline())
+		self.pt3430translate(self.dmm_com.readline().decode())
 		return self.status["Measurement"]
